@@ -1,0 +1,90 @@
+{
+    "name": "stillat/tesseract-native-collector",
+    "description": "NativePHP Mobile plugin that streams Laravel telemetry and the native UI tree to the Tesseract desktop debugger.",
+    "keywords": [
+        "debugging",
+        "laravel",
+        "nativephp",
+        "observability",
+        "tesseract"
+    ],
+    "type": "nativephp-plugin",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "John Koster",
+            "email": "john@stillat.com",
+            "homepage": "https://stillat.com",
+            "role": "Developer"
+        }
+    ],
+    "support": {
+        "email": "support@stillat.com"
+    },
+    "require": {
+        "php": "^8.3",
+        "composer-runtime-api": "^2.2",
+        "fortephp/forte": "^1.0.3",
+        "laravel/framework": "^12.41.1|^13.0",
+        "laravel/mcp": "^0.8.2|^0.9",
+        "nativephp/mobile": "^3.3|^4.0"
+    },
+    "require-dev": {
+        "laravel/boost": "^2.0",
+        "laravel/pint": "^1.27",
+        "orchestra/testbench": "^10.9|^11.0",
+        "pestphp/pest": "^4.4.1",
+        "pestphp/pest-plugin-laravel": "^4.1"
+    },
+    "suggest": {
+        "laravel/boost": "Integrates the native collector tools into Laravel Boost's MCP server."
+    },
+    "autoload": {
+        "psr-4": {
+            "Tesseract\\NativeCollector\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tesseract\\NativeCollector\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "format": "pint --format agent",
+        "format:check": "pint --test --format agent",
+        "test": "pest --compact"
+    },
+    "archive": {
+        "exclude": [
+            "/.github",
+            "/.gitattributes",
+            "/.gitignore",
+            "/.phpunit.cache",
+            "/composer.lock",
+            "/node_modules",
+            "/package-lock.json",
+            "/package.json",
+            "/phpunit.xml.dist",
+            "/resources/js/*.test.js",
+            "/tests",
+            "/vendor",
+            "/vitest.config.js"
+        ]
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Tesseract\\NativeCollector\\TesseractNativeCollectorServiceProvider"
+            ]
+        },
+        "nativephp": {
+            "manifest": "nativephp.json"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        },
+        "sort-packages": true
+    }
+}

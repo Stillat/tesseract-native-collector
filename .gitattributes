@@ -1,0 +1,8 @@
+.github/** export-ignore
+.gitignore export-ignore
+package.json export-ignore
+package-lock.json export-ignore
+phpunit.xml.dist export-ignore
+tests/** export-ignore
+vitest.config.js export-ignore
+resources/js/*.test.js export-ignore

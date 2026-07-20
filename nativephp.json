@@ -1,0 +1,70 @@
+{
+    "namespace": "Tesseract",
+    "bridge_functions": [
+        {
+            "name": "Tesseract.Connect",
+            "android": "com.tesseract.collector.TesseractFunctions.Connect",
+            "android_params": [
+                "context"
+            ],
+            "ios": "TesseractFunctions.Connect",
+            "description": "Open the desktop session and start the agent transport (idempotent)."
+        },
+        {
+            "name": "Tesseract.Ingest",
+            "android": "com.tesseract.collector.TesseractFunctions.Ingest",
+            "android_params": [
+                "context"
+            ],
+            "ios": "TesseractFunctions.Ingest",
+            "description": "Enqueue a batch of envelopes (logs, queries, exceptions, semantics) for broadcast to the desktop."
+        },
+        {
+            "name": "Tesseract.Status",
+            "android": "com.tesseract.collector.TesseractFunctions.Status",
+            "android_params": [
+                "context"
+            ],
+            "ios": "TesseractFunctions.Status",
+            "description": "Report agent transport and session health."
+        },
+        {
+            "name": "Tesseract.TakeCommands",
+            "android": "com.tesseract.collector.TesseractFunctions.TakeCommands",
+            "android_params": [
+                "context"
+            ],
+            "ios": "TesseractFunctions.TakeCommands",
+            "description": "Hand PHP the buffered host commands to execute."
+        },
+        {
+            "name": "Tesseract.Respond",
+            "android": "com.tesseract.collector.TesseractFunctions.Respond",
+            "android_params": [
+                "context"
+            ],
+            "ios": "TesseractFunctions.Respond",
+            "description": "Post a PHP command result back to the desktop."
+        }
+    ],
+    "android": {
+        "min_version": 33,
+        "init_function": "com.tesseract.collector.initialize",
+        "permissions": [
+            "android.permission.INTERNET"
+        ]
+    },
+    "ios": {
+        "min_version": "18.2",
+        "init_function": "initializeTesseract",
+        "info_plist": {
+            "NSAppTransportSecurity": {
+                "NSAllowsLocalNetworking": true
+            }
+        }
+    },
+    "events": [],
+    "hooks": {
+        "pre_compile": "nativephp:tesseract:pre-compile"
+    }
+}
