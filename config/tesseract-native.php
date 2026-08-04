@@ -4,6 +4,7 @@ declare(strict_types=1);
 use Tesseract\NativeCollector\Jobs\PumpTesseractCommands;
 
 return [
+    // Effective only when Laravel and the native application are in debug mode.
     'enabled' => env('TESSERACT_NATIVE_ENABLED', true),
 
     'enabled_during_tests' => env('TESSERACT_NATIVE_ENABLED_DURING_TESTS', false),

@@ -1,6 +1,7 @@
 package com.tesseract.collector
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.util.Log
 import com.tesseract.collector.capture.NativeCommandBridge
 import com.tesseract.collector.capture.TesseractInspector
@@ -20,6 +21,8 @@ import com.tesseract.collector.capture.TesseractInspector
  * lets us attach the capture observers as early as possible.
  */
 fun initialize(context: Context) {
+    if ((context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) == 0) return
+
     try {
         NativeCommandBridge.applyPersistedMirrorOrientation(context)
         TesseractInspector.register()

@@ -6,7 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import com.nativephp.mobile.ui.MainActivity
-import com.nativephp.mobile.ui.nativerender.NativeUIBridge
+import com.nativephp.mobile.ui.nativerender.NativeElementBridge
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -50,14 +50,14 @@ object NativeCommandBridge {
         if (!TesseractInspector.hasNode(nodeId)) return result(false, "target node is not in the active tree")
 
         val action: (() -> Unit) = when (sender) {
-            "press" -> { { NativeUIBridge.sendPressEvent(callbackId, nodeId) } }
-            "longpress" -> { { NativeUIBridge.sendLongPressEvent(callbackId, nodeId) } }
-            "text" -> { { NativeUIBridge.sendTextChangeEvent(callbackId, nodeId, payload.optString("value")) } }
-            "submit" -> { { NativeUIBridge.sendSubmitEvent(callbackId, nodeId, payload.optString("value")) } }
-            "select" -> { { NativeUIBridge.sendSelectChangeEvent(callbackId, nodeId, payload.optString("value")) } }
-            "toggle" -> { { NativeUIBridge.sendToggleChangeEvent(callbackId, nodeId, payload.optBoolean("value")) } }
-            "checkbox" -> { { NativeUIBridge.sendCheckboxChangeEvent(callbackId, nodeId, payload.optBoolean("value")) } }
-            "slider" -> { { NativeUIBridge.sendSliderChangeEvent(callbackId, nodeId, payload.optDouble("value", 0.0).toFloat()) } }
+            "press" -> { { NativeElementBridge.sendPressEvent(callbackId, nodeId) } }
+            "longpress" -> { { NativeElementBridge.sendLongPressEvent(callbackId, nodeId) } }
+            "text" -> { { NativeElementBridge.sendTextChangeEvent(callbackId, nodeId, payload.optString("value")) } }
+            "submit" -> { { NativeElementBridge.sendSubmitEvent(callbackId, nodeId, payload.optString("value")) } }
+            "select" -> { { NativeElementBridge.sendSelectChangeEvent(callbackId, nodeId, payload.optString("value")) } }
+            "toggle" -> { { NativeElementBridge.sendToggleChangeEvent(callbackId, nodeId, payload.optBoolean("value")) } }
+            "checkbox" -> { { NativeElementBridge.sendCheckboxChangeEvent(callbackId, nodeId, payload.optBoolean("value")) } }
+            "slider" -> { { NativeElementBridge.sendSliderChangeEvent(callbackId, nodeId, payload.optDouble("value", 0.0).toFloat()) } }
             else -> return result(false, "unknown sender '$sender'")
         }
 
@@ -112,7 +112,7 @@ object NativeCommandBridge {
     fun navigate(payload: JSONObject): JSONObject {
         val uri = payload.optString("uri")
         if (uri.isEmpty()) return result(false, "no uri")
-        return sendNativeEvent("__tesseract:navigate", JSONObject().put("uri", uri), "navigate $uri")
+        return sendNativeEvent("tesseract:navigate", JSONObject().put("uri", uri), "navigate $uri")
     }
 
     fun setStyle(payload: JSONObject): JSONObject {
@@ -122,10 +122,13 @@ object NativeCommandBridge {
         } else {
             val nodeId = nodeIdBits(payload)
             if (!TesseractInspector.hasNode(nodeId)) return result(false, "target node is not in the active tree")
+            val key = TesseractInspector.instrumentationKey(nodeId)
+                ?: return result(false, "target node is not instrumented")
             inner.put("nodeId", unsignedNodeId(nodeId))
+            inner.put("key", key)
             if (payload.has("classes") && !payload.isNull("classes")) inner.put("classes", payload.optString("classes"))
         }
-        return sendNativeEvent("__tesseract:set-style", inner, "set style")
+        return sendNativeEvent("tesseract:set-style", inner, "set style")
     }
 
     fun setScope(payload: JSONObject): JSONObject {
@@ -133,7 +136,7 @@ object NativeCommandBridge {
         if (property.isEmpty()) return result(false, "no property")
         val inner = JSONObject().put("property", property)
         if (payload.has("value")) inner.put("value", payload.get("value"))
-        return sendNativeEvent("__tesseract:set-scope", inner, "set scope $property")
+        return sendNativeEvent("tesseract:set-scope", inner, "set scope $property")
     }
 
     fun call(payload: JSONObject): JSONObject {
@@ -142,11 +145,11 @@ object NativeCommandBridge {
         val inner = JSONObject()
             .put("method", method)
             .put("args", payload.optJSONArray("args") ?: JSONArray())
-        return sendNativeEvent("__tesseract:call", inner, "call $method")
+        return sendNativeEvent("tesseract:call", inner, "call $method")
     }
 
     private fun sendNativeEvent(name: String, payload: JSONObject, message: String): JSONObject =
-        dispatchOnMain(message) { NativeUIBridge.sendNativeEvent(name, payload.toString()) }
+        dispatchOnMain(message) { NativeElementBridge.sendNativeEvent(name, payload.toString()) }
 
     private fun dispatchOnMain(message: String, action: () -> Unit): JSONObject {
         return try {

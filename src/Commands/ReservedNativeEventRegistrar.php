@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace Tesseract\NativeCollector\Commands;
 
-use Native\Mobile\Edge\Element;
-use Native\Mobile\Edge\Inspector\ElementInspector;
 use Native\Mobile\Edge\NativeComponent;
+use Native\Mobile\Edge\NativeEventHandlers;
 use ReflectionClass;
 use ReflectionException;
 use ReflectionMethod;
 use ReflectionProperty;
 use RuntimeException;
+use Tesseract\NativeCollector\Instrumentation\ElementInstrumentation;
 use Throwable;
 
 final class ReservedNativeEventRegistrar
@@ -21,26 +21,20 @@ final class ReservedNativeEventRegistrar
 
     public function register(): void
     {
-        if (! method_exists(NativeComponent::class, 'registerReservedNativeEventHandler')) {
-            return;
-        }
-
         $this->unregisterPreviousHandlers();
 
         self::$handlerIds = [
-            NativeComponent::registerReservedNativeEventHandler('__tesseract:navigate', $this->navigate(...)),
-            NativeComponent::registerReservedNativeEventHandler('__tesseract:set-scope', $this->setScope(...)),
-            NativeComponent::registerReservedNativeEventHandler('__tesseract:call', $this->call(...)),
-            NativeComponent::registerReservedNativeEventHandler('__tesseract:set-style', $this->setStyle(...)),
+            NativeEventHandlers::register('tesseract:navigate', $this->navigate(...)),
+            NativeEventHandlers::register('tesseract:set-scope', $this->setScope(...)),
+            NativeEventHandlers::register('tesseract:call', $this->call(...)),
+            NativeEventHandlers::register('tesseract:set-style', $this->setStyle(...)),
         ];
     }
 
     private function unregisterPreviousHandlers(): void
     {
-        if (method_exists(NativeComponent::class, 'unregisterReservedNativeEventHandler')) {
-            foreach (self::$handlerIds as $handlerId) {
-                NativeComponent::unregisterReservedNativeEventHandler($handlerId);
-            }
+        foreach (self::$handlerIds as $handlerId) {
+            NativeEventHandlers::unregister($handlerId);
         }
 
         self::$handlerIds = [];
@@ -135,29 +129,29 @@ final class ReservedNativeEventRegistrar
     private function setStyle(array $payload, NativeComponent $component): void
     {
         if (($payload['reset'] ?? false) === true) {
-            $this->resetStyleOverrides();
+            ElementInstrumentation::resetStyleOverrides();
 
             return;
         }
 
         $nodeId = $this->nodeId($payload['nodeId'] ?? null);
 
-        if ($nodeId === null) {
+        $key = is_string($payload['key'] ?? null) ? $payload['key'] : '';
+
+        if ($nodeId === null || $key === '') {
             return;
         }
 
-        $screen = method_exists($component, 'elementInspectorScope')
-            ? $component->elementInspectorScope()
-            : $component::class;
+        $screen = $component::class;
         $classes = $payload['classes'] ?? null;
 
         if (is_string($classes)) {
-            $this->storeStyleOverride($screen, $nodeId, $classes);
+            ElementInstrumentation::setStyleOverrideForKey($screen, $key, $classes);
 
             return;
         }
 
-        $this->removeStyleOverride($screen, $nodeId);
+        ElementInstrumentation::removeStyleOverrideForKey($screen, $key);
     }
 
     private function nodeId(mixed $value): ?int
@@ -167,65 +161,6 @@ final class ReservedNativeEventRegistrar
         }
 
         return is_int($value) && $value > 0 ? $value : null;
-    }
-
-    private function resetStyleOverrides(): void
-    {
-        if (class_exists(ElementInspector::class)) {
-            ElementInspector::resetStyleOverrides();
-
-            return;
-        }
-
-        $this->updateLegacyStyleOverrides(static fn (): array => []);
-    }
-
-    private function storeStyleOverride(string $screen, int $nodeId, string $classes): void
-    {
-        if (class_exists(ElementInspector::class)) {
-            ElementInspector::setStyleOverride($screen, $nodeId, $classes);
-
-            return;
-        }
-
-        $this->updateLegacyStyleOverrides(static function (array $overrides) use ($screen, $nodeId, $classes): array {
-            $overrides[$screen][$nodeId] = $classes;
-
-            return $overrides;
-        });
-    }
-
-    private function removeStyleOverride(string $screen, int $nodeId): void
-    {
-        if (class_exists(ElementInspector::class)) {
-            ElementInspector::removeStyleOverride($screen, $nodeId);
-
-            return;
-        }
-
-        $this->updateLegacyStyleOverrides(static function (array $overrides) use ($screen, $nodeId): array {
-            unset($overrides[$screen][$nodeId]);
-
-            if (($overrides[$screen] ?? []) === []) {
-                unset($overrides[$screen]);
-            }
-
-            return $overrides;
-        });
-    }
-
-    /**
-     * @param  callable(array<string, array<int, string>>): array<string, array<int, string>>  $mutator
-     */
-    private function updateLegacyStyleOverrides(callable $mutator): void
-    {
-        if (! property_exists(Element::class, 'styleOverrides')) {
-            return;
-        }
-
-        $property = new ReflectionProperty(Element::class, 'styleOverrides');
-        $current = $property->getValue();
-        $property->setValue(null, $mutator(is_array($current) ? $current : []));
     }
 
     private function publicComponentProperty(NativeComponent $component, string $property): ?ReflectionProperty

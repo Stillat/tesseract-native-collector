@@ -27,7 +27,7 @@
         "fortephp/forte": "^1.0.3",
         "laravel/framework": "^12.41.1|^13.0",
         "laravel/mcp": "^0.8.2|^0.9",
-        "nativephp/mobile": "^3.3|^4.0"
+        "nativephp/mobile": "^4.0"
     },
     "require-dev": {
         "laravel/boost": "^2.0",

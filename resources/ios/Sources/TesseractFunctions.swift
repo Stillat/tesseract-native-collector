@@ -11,6 +11,7 @@ enum TesseractFunctions {
     /// PHP ignition: open the desktop session and start the transport. Idempotent.
     class Connect: BridgeFunction {
         func execute(parameters: [String: Any]) throws -> [String: Any] {
+            if let unavailable = tesseractUnavailable() { return unavailable }
             TesseractAgent.shared.connect(config: parameters)
 
             return ["success": true, "connected": true]
@@ -19,6 +20,7 @@ enum TesseractFunctions {
 
     class Ingest: BridgeFunction {
         func execute(parameters: [String: Any]) throws -> [String: Any] {
+            if let unavailable = tesseractUnavailable() { return unavailable }
             let envelopes: [[String: Any]]
 
             if let list = parameters["envelopes"] as? [[String: Any]] {
@@ -40,6 +42,7 @@ enum TesseractFunctions {
     /// Health probe for `tesseract:doctor` and the desktop.
     class Status: BridgeFunction {
         func execute(parameters: [String: Any]) throws -> [String: Any] {
+            if let unavailable = tesseractUnavailable() { return unavailable }
             var status = TesseractAgent.shared.status()
             status["success"] = true
 
@@ -51,6 +54,7 @@ enum TesseractFunctions {
     /// JSON string so arbitrarily-nested command payloads survive the bridge.
     class TakeCommands: BridgeFunction {
         func execute(parameters: [String: Any]) throws -> [String: Any] {
+            if let unavailable = tesseractUnavailable() { return unavailable }
             let commands = TesseractAgent.shared.takeCommands()
             let data = (try? JSONSerialization.data(withJSONObject: commands)) ?? Data("[]".utf8)
             let json = String(data: data, encoding: .utf8) ?? "[]"
@@ -61,6 +65,7 @@ enum TesseractFunctions {
 
     class Respond: BridgeFunction {
         func execute(parameters: [String: Any]) throws -> [String: Any] {
+            if let unavailable = tesseractUnavailable() { return unavailable }
             let commandId = (parameters["commandId"] as? String) ?? ""
             let kind = parameters["kind"] as? String
             let status = (parameters["status"] as? String) ?? "error"
@@ -84,4 +89,12 @@ enum TesseractFunctions {
             return ["success": true, "accepted": accepted]
         }
     }
+}
+
+private func tesseractUnavailable() -> [String: Any]? {
+    #if DEBUG
+    return nil
+    #else
+    return ["success": true, "available": false]
+    #endif
 }

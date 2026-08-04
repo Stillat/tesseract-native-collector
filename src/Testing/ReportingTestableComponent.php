@@ -198,9 +198,51 @@ class ReportingTestableComponent extends TestableComponent
         return $this->reportStep('instruction', 'longPress', [$target], fn () => parent::longPress($target));
     }
 
-    public function input(string $target, string $text): static
+    public function pressDown(string $target): static
     {
-        return $this->reportStep('instruction', 'input', [$target, $text], fn () => parent::input($target, $text));
+        return $this->reportStep('instruction', 'pressDown', [$target], fn () => parent::pressDown($target));
+    }
+
+    public function pressUp(string $target): static
+    {
+        return $this->reportStep('instruction', 'pressUp', [$target], fn () => parent::pressUp($target));
+    }
+
+    public function input(string $target, string $text, ?int $selectionStart = null, ?int $selectionEnd = null): static
+    {
+        $args = [$target, $text];
+
+        if ($selectionStart !== null) {
+            $args[] = $selectionStart;
+            $args[] = $selectionEnd;
+        }
+
+        return $this->reportStep(
+            'instruction',
+            'input',
+            $args,
+            fn () => parent::input($target, $text, $selectionStart, $selectionEnd),
+        );
+    }
+
+    public function moveCaret(string $target, int $start, ?int $end = null, ?string $text = null): static
+    {
+        $args = [$target, $start];
+
+        if ($end !== null || $text !== null) {
+            $args[] = $end;
+        }
+
+        if ($text !== null) {
+            $args[] = $text;
+        }
+
+        return $this->reportStep(
+            'instruction',
+            'moveCaret',
+            $args,
+            fn () => parent::moveCaret($target, $start, $end, $text),
+        );
     }
 
     public function submit(string $target, string $text = ''): static

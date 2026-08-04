@@ -28,6 +28,7 @@ object TesseractInspector {
     private val clearHighlight = Runnable { highlightedNode.intValue = 0 }
 
     @Volatile private var knownNodeIds: Set<Int> = emptySet()
+    @Volatile private var instrumentationKeys: Map<Int, String> = emptyMap()
 
     fun register() {
         NativeNodeDecoratorRegistry.register("tesseract.inspector") { node, current ->
@@ -36,6 +37,8 @@ object TesseractInspector {
     }
 
     fun hasNode(nodeId: Int): Boolean = nodeId != 0 && knownNodeIds.contains(nodeId)
+
+    fun instrumentationKey(nodeId: Int): String? = instrumentationKeys[nodeId]
 
     fun highlight(nodeId: Int) {
         highlightedNode.intValue = nodeId
@@ -56,7 +59,9 @@ object TesseractInspector {
 
     fun updateKnownNodes(payload: JSONObject) {
         val ids = mutableSetOf<Int>()
-        collectNodeIds(payload.optJSONObject("root"), ids)
+        val keys = mutableMapOf<Int, String>()
+        collectNodeIds(payload.optJSONObject("root"), ids, keys)
+        instrumentationKeys = keys
         updateKnownNodes(ids)
     }
 
@@ -71,11 +76,13 @@ object TesseractInspector {
         }
     }
 
-    private fun collectNodeIds(node: JSONObject?, ids: MutableSet<Int>) {
+    private fun collectNodeIds(node: JSONObject?, ids: MutableSet<Int>, keys: MutableMap<Int, String>) {
         if (node == null) return
-        ids.add((node.optLong("id", 0L) and 0xffffffffL).toInt())
+        val id = (node.optLong("id", 0L) and 0xffffffffL).toInt()
+        ids.add(id)
+        node.optJSONObject("props")?.optString("_dbg_key")?.takeIf { it.isNotEmpty() }?.let { keys[id] = it }
         val children: JSONArray = node.optJSONArray("children") ?: return
-        for (index in 0 until children.length()) collectNodeIds(children.optJSONObject(index), ids)
+        for (index in 0 until children.length()) collectNodeIds(children.optJSONObject(index), ids, keys)
     }
 
     @OptIn(ExperimentalFoundationApi::class)

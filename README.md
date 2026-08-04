@@ -8,14 +8,15 @@ and desktop.
 > [!WARNING]
 > This is a development plugin. It can expose logs, queries, storage files,
 > media, source details, and Tinker execution to a paired Tesseract desktop
-> session. Do not register or enable it in production builds.
+> session. Runtime collection is hard-disabled unless Laravel debug mode and
+> the platform's native debug build flag are both enabled.
 
 ## Requirements
 
 - PHP 8.3 or newer
 - Laravel 12.41.1 or newer, or Laravel 13
 - Laravel MCP 0.8.2 or any 0.9 release
-- NativePHP Mobile 3.3 or newer within the 3.x series
+- NativePHP Mobile 4.0 or newer
 - Android SDK 33 or newer, or iOS 18.2 or newer
 - A running Tesseract desktop debugger
 
@@ -119,7 +120,7 @@ The most commonly used environment variables are:
 
 | Variable                                | Default     | Purpose                                              |
 | --------------------------------------- | ----------- | ---------------------------------------------------- |
-| `TESSERACT_NATIVE_ENABLED`              | `true`      | Master switch. Set to `false` for production builds. |
+| `TESSERACT_NATIVE_ENABLED`              | `true`      | Master switch inside debug builds.                   |
 | `TESSERACT_NATIVE_ENABLED_DURING_TESTS` | `false`     | Opts tests into device collection.                   |
 | `TESSERACT_NATIVE_HOST`                 | `127.0.0.1` | Paired desktop host fallback.                        |
 | `TESSERACT_NATIVE_RELAY_PORT`           | `61230`     | Desktop relay port fallback.                         |
@@ -130,13 +131,11 @@ The most commonly used environment variables are:
 See [`config/tesseract-native.php`](config/tesseract-native.php) for all
 telemetry categories, capture limits, queue-pump timings, and capabilities.
 
-For production builds, set at minimum:
-
-```dotenv
-TESSERACT_NATIVE_ENABLED=false
-```
-
-and remove the package from the production plugin provider.
+`TESSERACT_NATIVE_ENABLED` cannot override the safety gate: with
+`APP_DEBUG=false`, the PHP observer, view instrumentation, transport, and
+command handlers remain inactive. Android additionally requires a debuggable
+application build and iOS requires `DEBUG`. Keeping the package as a
+development dependency is still recommended so release artifacts omit it.
 
 ## Development
 

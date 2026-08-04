@@ -135,14 +135,13 @@ class TelemetryForwarder
     public function bindNativeComponents(): void
     {
         self::clearNativeHookSubscriptions();
-
-        $this->enableElementDebugCapture();
+        RuntimeHookAdapter::boot();
 
         $trackComponents = (bool) config('tesseract-native.telemetry.components', true);
         $trackNavigation = (bool) config('tesseract-native.telemetry.navigation', true);
 
         /** @var class-string $componentClass */
-        $componentClass = 'Native\Mobile\Edge\NativeComponent';
+        $componentClass = RuntimeHookAdapter::class;
 
         if (! class_exists($componentClass)) {
             return;
@@ -272,25 +271,6 @@ class TelemetryForwarder
         $this->bindRenderErrors();
     }
 
-    protected function enableElementDebugCapture(): void
-    {
-        /** @var class-string $inspectorClass */
-        $inspectorClass = 'Native\Mobile\Edge\Inspector\ElementInspector';
-
-        if (class_exists($inspectorClass) && method_exists($inspectorClass, 'enable')) {
-            $inspectorClass::enable();
-
-            return;
-        }
-
-        /** @var class-string $elementClass */
-        $elementClass = 'Native\Mobile\Edge\Element';
-
-        if (class_exists($elementClass) && property_exists($elementClass, 'captureElementMetadata')) {
-            (new \ReflectionProperty($elementClass, 'captureElementMetadata'))->setValue(null, true);
-        }
-    }
-
     protected function bindNativeInteractions(): void
     {
         if (! (bool) config('tesseract-native.telemetry.interactions', true)) {
@@ -298,7 +278,7 @@ class TelemetryForwarder
         }
 
         /** @var class-string $componentClass */
-        $componentClass = 'Native\Mobile\Edge\NativeComponent';
+        $componentClass = RuntimeHookAdapter::class;
 
         if (! class_exists($componentClass) || ! method_exists($componentClass, 'observeInteractionDispatched')) {
             return;
@@ -382,7 +362,7 @@ class TelemetryForwarder
         }
 
         /** @var class-string $componentClass */
-        $componentClass = 'Native\Mobile\Edge\NativeComponent';
+        $componentClass = RuntimeHookAdapter::class;
 
         if (! class_exists($componentClass) || ! method_exists($componentClass, 'observeNativeEventDispatched')) {
             return;
@@ -469,7 +449,7 @@ class TelemetryForwarder
         }
 
         /** @var class-string $componentClass */
-        $componentClass = 'Native\Mobile\Edge\NativeComponent';
+        $componentClass = RuntimeHookAdapter::class;
 
         if (! class_exists($componentClass) || ! method_exists($componentClass, 'observeRenderError')) {
             return;

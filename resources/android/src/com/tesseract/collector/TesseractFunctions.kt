@@ -1,6 +1,7 @@
 package com.tesseract.collector
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import com.nativephp.mobile.bridge.BridgeFunction
 import com.nativephp.mobile.bridge.BridgeResponse
 import org.json.JSONArray
@@ -19,6 +20,7 @@ object TesseractFunctions {
     /** PHP ignition: open the desktop session and start the transport. Idempotent. */
     class Connect(private val context: Context) : BridgeFunction {
         override fun execute(parameters: Map<String, Any>): Map<String, Any> {
+            if (!context.isTesseractDebuggable()) return unavailable()
             TesseractAgent.connect(context.applicationContext, JSONObject(parameters))
 
             return BridgeResponse.success(mapOf("connected" to true))
@@ -27,6 +29,7 @@ object TesseractFunctions {
 
     class Ingest(private val context: Context) : BridgeFunction {
         override fun execute(parameters: Map<String, Any>): Map<String, Any> {
+            if (!context.isTesseractDebuggable()) return unavailable()
             val envelopes = parameters["envelopes"]
             val array = when (envelopes) {
                 is JSONArray -> envelopes
@@ -44,6 +47,7 @@ object TesseractFunctions {
     /** Health probe for `tesseract:doctor` and the desktop. */
     class Status(private val context: Context) : BridgeFunction {
         override fun execute(parameters: Map<String, Any>): Map<String, Any> {
+            if (!context.isTesseractDebuggable()) return unavailable()
             return BridgeResponse.success(TesseractAgent.status().toMap())
         }
     }
@@ -54,12 +58,14 @@ object TesseractFunctions {
      */
     class TakeCommands(private val context: Context) : BridgeFunction {
         override fun execute(parameters: Map<String, Any>): Map<String, Any> {
+            if (!context.isTesseractDebuggable()) return unavailable()
             return BridgeResponse.success(mapOf("commands" to TesseractAgent.takeCommands().toString()))
         }
     }
 
     class Respond(private val context: Context) : BridgeFunction {
         override fun execute(parameters: Map<String, Any>): Map<String, Any> {
+            if (!context.isTesseractDebuggable()) return unavailable()
             val commandId = parameters["commandId"] as? String ?: ""
             val kind = parameters["kind"] as? String
             val status = parameters["status"] as? String ?: "error"
@@ -76,6 +82,12 @@ object TesseractFunctions {
         }
     }
 }
+
+private fun Context.isTesseractDebuggable(): Boolean =
+    (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+
+private fun unavailable(): Map<String, Any> =
+    BridgeResponse.success(mapOf("available" to false))
 
 private fun JSONObject.toMap(): Map<String, Any> {
     val map = HashMap<String, Any>()

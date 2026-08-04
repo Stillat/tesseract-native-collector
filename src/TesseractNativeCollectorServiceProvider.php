@@ -10,12 +10,14 @@ use Illuminate\Support\ServiceProvider;
 use Laravel\Boost\Mcp\Boost;
 use Laravel\Mcp\Facades\Mcp;
 use Native\Mobile\Testing\TestableComponent;
+use RuntimeException;
 use Tesseract\NativeCollector\Blade\NativeViewInstrumenter;
 use Tesseract\NativeCollector\Commands\CommandExecutor;
 use Tesseract\NativeCollector\Commands\CommandPump;
 use Tesseract\NativeCollector\Commands\PreCompileCommand;
 use Tesseract\NativeCollector\Commands\ReservedNativeEventRegistrar;
 use Tesseract\NativeCollector\Console\TesseractNativeMcpCommand;
+use Tesseract\NativeCollector\Instrumentation\ElementInstrumentation;
 use Tesseract\NativeCollector\Jobs\PumpTesseractCommands;
 use Tesseract\NativeCollector\Mcp\DesktopControlClient;
 use Tesseract\NativeCollector\Mcp\DesktopLoopbackResolver;
@@ -47,7 +49,9 @@ class TesseractNativeCollectorServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__.'/../config/tesseract-native.php', 'tesseract-native');
 
-        $this->registerBoostIntegration();
+        if ($this->app->hasDebugModeEnabled()) {
+            $this->registerBoostIntegration();
+        }
 
         $this->app->singleton(DesktopLoopbackResolver::class, static fn ($app): DesktopLoopbackResolver => new DesktopLoopbackResolver(
             $app->make(Pairing::class),
@@ -99,12 +103,16 @@ class TesseractNativeCollectorServiceProvider extends ServiceProvider
         ], 'tesseract-native-config');
 
         $this->disableForTestRuns();
-        $this->registerMcpServer();
         $this->registerTestHarness();
+        $this->disableOutsideDebugMode();
 
         if (! (bool) config('tesseract-native.enabled', true)) {
             return;
         }
+
+        $this->registerMcpServer();
+
+        ElementInstrumentation::register();
 
         $this->app->make(TelemetryForwarder::class)->subscribe(
             $this->app->make(Dispatcher::class),
@@ -146,6 +154,14 @@ class TesseractNativeCollectorServiceProvider extends ServiceProvider
         config(['tesseract-native.enabled' => false]);
     }
 
+    /** The runtime collector is development tooling and must stay inert in release builds. */
+    protected function disableOutsideDebugMode(): void
+    {
+        if (! $this->app->hasDebugModeEnabled()) {
+            config(['tesseract-native.enabled' => false]);
+        }
+    }
+
     /**
      * Route the NativePHP test harness through the reporting proxy when a
      * test run asks for step reporting (TESSERACT_TEST_REPORT names the
@@ -162,9 +178,13 @@ class TesseractNativeCollectorServiceProvider extends ServiceProvider
             return;
         }
 
-        if (method_exists(TestableComponent::class, 'useHarness')) {
-            TestableComponent::useHarness(ReportingTestableComponent::class);
+        if (! method_exists(TestableComponent::class, 'useHarness')) {
+            throw new RuntimeException(
+                'The installed nativephp/mobile runtime does not support the Tesseract test reporting harness.',
+            );
         }
+
+        TestableComponent::useHarness(ReportingTestableComponent::class);
     }
 
     /**
@@ -271,6 +291,10 @@ class TesseractNativeCollectorServiceProvider extends ServiceProvider
      */
     protected function serviceCommands(): void
     {
+        if (! $this->app->make(NativeAgent::class)->isAvailable()) {
+            return;
+        }
+
         // Force a fresh chain on launch: a stale heartbeat from an unclean prior
         // exit would otherwise leave the pump dormant (so SQL/storage don't load)
         // until the app is relaunched once more. restartChain clears it exactly

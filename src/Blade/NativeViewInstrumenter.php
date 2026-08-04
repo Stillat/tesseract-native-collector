@@ -16,12 +16,10 @@ use Throwable;
  * before NativePHP's NativeTagPrecompiler, so the raw `<native:*>` tags are
  * still intact and every node's offsets match the authored file).
  *
- * Each native element gains a `runtime_data:tesseract` attribute carrying
+ * Each native element gains a `tesseract-meta` attribute carrying
  * base64-encoded JSON `{f: <project-relative view file>, l: <line>}`. The
- * (patched) NativeTagPrecompiler passes `runtime_data:*` attributes through
- * verbatim, and the (patched) NativeElementCollector strips them into the
- * Element's runtime-data bag, which serializes to `_dbg_rt_tesseract` node props
- * when debug capture is on. Base64 keeps the value inert for the
+ * NativePHP's generic capture seam maps it to `_dbg_rt_tesseract` node props.
+ * Base64 keeps the value inert for the
  * precompiler's quote-delimited attribute regexes.
  *
  * Scope guard: ONLY templates under a `views/native/` directory are touched —
@@ -46,13 +44,6 @@ class NativeViewInstrumenter
             return;
         }
 
-        // NOTE: this instrumenter assumes the shell's `NativeTagPrecompiler`
-        // has the `runtime_data:*` handler from the tesseract patches. Without
-        // it, the base precompiler splits our injected `runtime_data:tesseract=`
-        // into a bogus boolean + dynamic attr, and the base64 body compiles as
-        // an unquoted PHP expression (fatal at view render). The plugin will
-        // ship a composer floor that requires a patched shell before release;
-        // in dev, apply `_nativebackup/` (via `scripts/restore-nativephp-patches.sh`).
         Blade::prepareStringsForCompilationUsing(
             static fn (string $template): string => (new static)->instrument($template)
         );
@@ -96,8 +87,7 @@ class NativeViewInstrumenter
     /**
      * Identity of everything that shapes compiled native-view output: whether
      * instrumentation can run at all, this instrumenter's source, and the
-     * shell's tag precompiler (whose patch state decides how the injected
-     * `runtime_data:*` attributes compile).
+     * shell's tag precompiler.
      */
     protected static function instrumentationFingerprint(): string
     {
@@ -145,16 +135,11 @@ class NativeViewInstrumenter
 
                     $builder->queueSetAttribute(
                         $element,
-                        'runtime_data:tesseract',
+                        'tesseract-meta',
                         base64_encode((string) json_encode([
                             'f' => $relativePath,
                             'l' => $element->startLine(),
                         ])),
-                    );
-                    $builder->queueSetAttribute(
-                        $element,
-                        'runtime_data:source',
-                        $relativePath,
                     );
                 }
             });

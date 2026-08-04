@@ -9,11 +9,14 @@ final class TesseractInspectorState: ObservableObject {
     @Published private(set) var scrollRequestId = 0
 
     private var knownNodeIds: Set<Int> = []
+    private var instrumentationKeys: [Int: String] = [:]
     private var highlightClearItem: DispatchWorkItem?
 
     private init() {}
 
     func hasNode(_ nodeId: Int) -> Bool { nodeId != 0 && knownNodeIds.contains(nodeId) }
+
+    func instrumentationKey(for nodeId: Int) -> String? { instrumentationKeys[nodeId] }
 
     func highlight(_ nodeId: Int) {
         highlightClearItem?.cancel()
@@ -46,7 +49,9 @@ final class TesseractInspectorState: ObservableObject {
 
     func updateKnownNodes(from payload: [String: Any]) {
         var ids: Set<Int> = []
-        collectNodeIds(payload["root"] as? [String: Any], into: &ids)
+        var keys: [Int: String] = [:]
+        collectNodeIds(payload["root"] as? [String: Any], into: &ids, keys: &keys)
+        instrumentationKeys = keys
         updateKnownNodes(ids)
     }
 
@@ -60,12 +65,21 @@ final class TesseractInspectorState: ObservableObject {
         }
     }
 
-    private func collectNodeIds(_ node: [String: Any]?, into ids: inout Set<Int>) {
+    private func collectNodeIds(
+        _ node: [String: Any]?,
+        into ids: inout Set<Int>,
+        keys: inout [Int: String]
+    ) {
         guard let node else { return }
-        if let id = node["id"] as? Int { ids.insert(id) }
-        if let number = node["id"] as? NSNumber { ids.insert(number.intValue) }
+        let id = (node["id"] as? Int) ?? (node["id"] as? NSNumber)?.intValue
+        if let id {
+            ids.insert(id)
+            if let key = (node["props"] as? [String: Any])?["_dbg_key"] as? String, !key.isEmpty {
+                keys[id] = key
+            }
+        }
         for child in (node["children"] as? [[String: Any]]) ?? [] {
-            collectNodeIds(child, into: &ids)
+            collectNodeIds(child, into: &ids, keys: &keys)
         }
     }
 }

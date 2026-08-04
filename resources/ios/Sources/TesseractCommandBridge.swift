@@ -21,20 +21,20 @@ enum TesseractCommandBridge {
         case "native.navigate":
             let uri = (payload["uri"] as? String) ?? ""
             guard !uri.isEmpty else { return result(false, "no uri") }
-            return sendNativeEvent(name: "__tesseract:navigate", payload: ["uri": uri], message: "navigate \(uri)")
+            return sendNativeEvent(name: "tesseract:navigate", payload: ["uri": uri], message: "navigate \(uri)")
 
         case "native.set-scope":
             let property = (payload["property"] as? String) ?? ""
             guard !property.isEmpty else { return result(false, "no property") }
             var inner: [String: Any] = ["property": property]
             if let value = payload["value"], !(value is NSNull) { inner["value"] = value }
-            return sendNativeEvent(name: "__tesseract:set-scope", payload: inner, message: "set scope \(property)")
+            return sendNativeEvent(name: "tesseract:set-scope", payload: inner, message: "set scope \(property)")
 
         case "native.call":
             let method = (payload["method"] as? String) ?? ""
             guard !method.isEmpty else { return result(false, "no method") }
             return sendNativeEvent(
-                name: "__tesseract:call",
+                name: "tesseract:call",
                 payload: ["method": method, "args": (payload["args"] as? [Any]) ?? []],
                 message: "call \(method)"
             )
@@ -46,10 +46,12 @@ enum TesseractCommandBridge {
             } else {
                 let nodeId = intValue(payload["targetNodeId"])
                 guard TesseractInspectorState.shared.hasNode(nodeId) else { return result(false, "target node is not in the active tree") }
+                guard let key = TesseractInspectorState.shared.instrumentationKey(for: nodeId) else { return result(false, "target node is not instrumented") }
                 inner["nodeId"] = nodeId
+                inner["key"] = key
                 if let classes = payload["classes"] as? String { inner["classes"] = classes }
             }
-            return sendNativeEvent(name: "__tesseract:set-style", payload: inner, message: "set style")
+            return sendNativeEvent(name: "tesseract:set-style", payload: inner, message: "set style")
 
         case "native.dispatch-event":
             return dispatchEvent(payload)

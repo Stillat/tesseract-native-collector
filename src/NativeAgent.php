@@ -21,7 +21,23 @@ class NativeAgent
 {
     public function isAvailable(): bool
     {
-        return function_exists('nativephp_call');
+        if (! function_exists('nativephp_call')) {
+            return false;
+        }
+
+        if ((bool) config('nativephp-internal.running', false)) {
+            return true;
+        }
+
+        $platform = strtolower(trim((string) config('nativephp-internal.platform', '')));
+
+        if (in_array($platform, ['android', 'ios'], true)) {
+            return true;
+        }
+
+        $jumpBridgePort = getenv('JUMP_BRIDGE_PORT');
+
+        return is_string($jumpBridgePort) && trim($jumpBridgePort) !== '';
     }
 
     /**
