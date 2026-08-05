@@ -5,7 +5,16 @@ declare(strict_types=1);
 namespace Tesseract\NativeCollector\Telemetry;
 
 use Native\Mobile\Edge\Contracts\RuntimeObserver;
+use Native\Mobile\Edge\NativeComponent;
+use Native\Mobile\Edge\Runtime\ComponentContext;
+use Native\Mobile\Edge\Runtime\ComponentPublished;
+use Native\Mobile\Edge\Runtime\Dispatch;
+use Native\Mobile\Edge\Runtime\DispatchFinished;
+use Native\Mobile\Edge\Runtime\DispatchKind;
+use Native\Mobile\Edge\Runtime\DispatchStarting;
+use Native\Mobile\Edge\Runtime\RuntimeFailed;
 use Native\Mobile\Edge\RuntimeObservers;
+use ReflectionObject;
 use Throwable;
 
 /**
@@ -36,6 +45,9 @@ final class RuntimeHookAdapter implements RuntimeObserver
 
     private static ?int $runtimeSubscription = null;
 
+    /** @var array<string, array<string, mixed>> */
+    private static array $dispatchStates = [];
+
     public static function boot(): void
     {
         if (self::$runtimeSubscription !== null) {
@@ -57,6 +69,7 @@ final class RuntimeHookAdapter implements RuntimeObserver
         self::$nativeWillObservers = [];
         self::$nativeDidObservers = [];
         self::$failureObservers = [];
+        self::$dispatchStates = [];
         self::$sequence = 0;
         self::$runtimeSubscription = null;
     }
@@ -121,38 +134,67 @@ final class RuntimeHookAdapter implements RuntimeObserver
         unset(self::$failureObservers[$id]);
     }
 
-    public function componentPublished(array $snapshot): void
+    public function componentPublished(ComponentPublished $event): void
     {
-        self::notify(self::$scopeObservers, $snapshot);
+        $timings = $event->timings;
+
+        self::notify(self::$scopeObservers, [
+            ...self::contextPayload($event->context),
+            'state' => self::componentState($event->context->component),
+            'timings' => $timings === null ? null : [
+                'renderMs' => $timings->renderMs,
+                'serializeMs' => $timings->serializeMs,
+                'publishMs' => $timings->publishMs,
+            ],
+        ]);
     }
 
-    public function dispatchStarting(array $dispatch): void
+    public function dispatchStarting(DispatchStarting $event): void
     {
-        $normalized = self::normalizeDispatch($dispatch);
+        $dispatch = $event->dispatch;
+        $state = self::componentState($dispatch->context->component);
+        self::$dispatchStates[self::dispatchKey($dispatch)] = $state;
+        $normalized = self::normalizeDispatch([
+            ...self::dispatchPayload($dispatch),
+            'before' => $state,
+        ]);
+
         self::notify(
-            ($dispatch['kind'] ?? null) === 'native'
+            $dispatch->kind === DispatchKind::Native
                 ? self::$nativeWillObservers
                 : self::$interactionWillObservers,
             $normalized,
         );
     }
 
-    public function dispatchFinished(array $dispatch): void
+    public function dispatchFinished(DispatchFinished $event): void
     {
-        $normalized = self::normalizeDispatch($dispatch);
+        $dispatch = $event->dispatch;
+        $key = self::dispatchKey($dispatch);
+        $before = self::$dispatchStates[$key] ?? [];
+        unset(self::$dispatchStates[$key]);
+
+        $normalized = self::normalizeDispatch([
+            ...self::dispatchPayload($dispatch),
+            'before' => $before,
+            'after' => self::componentState($dispatch->context->component),
+            'durationMs' => $event->durationMs,
+            'error' => $event->exception,
+        ]);
+
         self::notify(
-            ($dispatch['kind'] ?? null) === 'native'
+            $dispatch->kind === DispatchKind::Native
                 ? self::$nativeDidObservers
                 : self::$interactionDidObservers,
             $normalized,
         );
     }
 
-    public function failed(Throwable $exception, array $context): void
+    public function failed(RuntimeFailed $event): void
     {
         foreach (self::$failureObservers as $observer) {
             try {
-                $observer($exception, is_string($context['class'] ?? null) ? $context['class'] : '');
+                $observer($event->exception, $event->context->component::class);
             } catch (Throwable) {
                 // Telemetry must never change application behavior.
             }
@@ -194,5 +236,70 @@ final class RuntimeHookAdapter implements RuntimeObserver
                 'message' => $error->getMessage(),
             ] : null,
         ];
+    }
+
+    /** @return array<string, mixed> */
+    private static function contextPayload(ComponentContext $context): array
+    {
+        $class = $context->component::class;
+
+        return [
+            'id' => spl_object_hash($context->component),
+            'name' => class_basename($class),
+            'class' => $class,
+            'uri' => $context->uri,
+            'renderCount' => $context->renderCount,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private static function dispatchPayload(Dispatch $dispatch): array
+    {
+        $payload = [
+            'kind' => $dispatch->kind->value,
+            ...self::contextPayload($dispatch->context),
+            'method' => $dispatch->method,
+        ];
+
+        if ($dispatch->kind === DispatchKind::Native) {
+            return [
+                ...$payload,
+                'event' => $dispatch->event,
+                'payload' => $dispatch->payload,
+            ];
+        }
+
+        return [
+            ...$payload,
+            'type' => $dispatch->eventType,
+            'callbackId' => $dispatch->callbackId,
+            'nodeId' => $dispatch->nodeId,
+            'args' => $dispatch->arguments,
+        ];
+    }
+
+    private static function dispatchKey(Dispatch $dispatch): string
+    {
+        return spl_object_id($dispatch->context->component).':'.$dispatch->id;
+    }
+
+    /** @return array<string, mixed> */
+    private static function componentState(NativeComponent $component): array
+    {
+        $state = [];
+
+        foreach ((new ReflectionObject($component))->getProperties(\ReflectionProperty::IS_PUBLIC) as $property) {
+            if ($property->isStatic() || ! $property->isInitialized($component)) {
+                continue;
+            }
+
+            try {
+                $state[$property->getName()] = $property->getValue($component);
+            } catch (Throwable) {
+                // A single unreadable property must not suppress the snapshot.
+            }
+        }
+
+        return $state;
     }
 }

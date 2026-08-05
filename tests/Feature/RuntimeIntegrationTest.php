@@ -7,6 +7,13 @@ use Native\Mobile\Edge\Elements\Column;
 use Native\Mobile\Edge\NativeComponent;
 use Native\Mobile\Edge\NativeElementCollector;
 use Native\Mobile\Edge\NativeEventHandlers;
+use Native\Mobile\Edge\Runtime\ComponentContext;
+use Native\Mobile\Edge\Runtime\ComponentPublished;
+use Native\Mobile\Edge\Runtime\Dispatch;
+use Native\Mobile\Edge\Runtime\DispatchFinished;
+use Native\Mobile\Edge\Runtime\DispatchKind;
+use Native\Mobile\Edge\Runtime\DispatchStarting;
+use Native\Mobile\Edge\Runtime\RenderTimings;
 use Native\Mobile\Edge\RuntimeObservers;
 use Tesseract\NativeCollector\Commands\ReservedNativeEventRegistrar;
 use Tesseract\NativeCollector\Instrumentation\ElementInstrumentation;
@@ -35,7 +42,7 @@ it('handles namespaced style commands through the generic event registry', funct
 
     ElementInstrumentation::register();
     (new ReservedNativeEventRegistrar)->register();
-    NativeEventHandlers::dispatch('tesseract:set-style', [
+    $handled = NativeEventHandlers::dispatch('tesseract:set-style', [
         'nodeId' => 42,
         'key' => $key,
         'classes' => 'p-8',
@@ -48,7 +55,8 @@ it('handles namespaced style commands through the generic event registry', funct
     ]);
     $tree = NativeElementCollector::collect()->toArray(new CallbackRegistry);
 
-    expect($tree['layout']['padding'])->toBe(32.0)
+    expect($handled)->toBeTrue()
+        ->and($tree['layout']['padding'])->toBe(32.0)
         ->and($tree['props']['_dbg_classes'])->toBe('p-2')
         ->and($tree['props']['_dbg_classes_active'])->toBe('p-8');
 });
@@ -63,26 +71,81 @@ it('adapts generic runtime dispatches to collector telemetry callbacks', functio
         $finished[] = $payload;
     });
     RuntimeHookAdapter::boot();
+    $component = new class extends NativeComponent
+    {
+        public int $count = 1;
 
-    RuntimeObservers::dispatchStarting([
-        'kind' => 'interaction',
-        'type' => 3,
-        'before' => ['count' => 1],
-    ]);
-    RuntimeObservers::dispatchFinished([
-        'kind' => 'interaction',
-        'type' => 3,
-        'before' => ['count' => 1],
-        'after' => ['count' => 2],
-        'error' => new RuntimeException('broken'),
-    ]);
+        public function render(): Column
+        {
+            return Column::make();
+        }
+    };
+    $context = new ComponentContext($component, '/counter', 4);
+    $dispatch = new Dispatch(
+        id: 7,
+        context: $context,
+        kind: DispatchKind::Interaction,
+        method: 'increment',
+        arguments: ['up'],
+        eventType: 3,
+        callbackId: 12,
+        nodeId: 42,
+    );
+
+    RuntimeObservers::dispatchStarting(new DispatchStarting($dispatch));
+    $component->count = 2;
+    RuntimeObservers::dispatchFinished(new DispatchFinished(
+        dispatch: $dispatch,
+        durationMs: 1.25,
+        exception: new RuntimeException('broken'),
+    ));
 
     expect($started[0]['eventType'])->toBe(3)
         ->and($started[0]['stateBefore'])->toBe(['count' => 1])
         ->and($finished[0]['stateAfter'])->toBe(['count' => 2])
+        ->and($finished[0]['durationMs'])->toBe(1.25)
+        ->and($finished[0]['renderCount'])->toBe(4)
+        ->and($finished[0]['args'])->toBe(['up'])
         ->and($finished[0]['error'])->toMatchArray([
             'class' => RuntimeException::class,
             'message' => 'broken',
+        ]);
+});
+
+it('shapes component state and render timings inside the collector', function (): void {
+    $published = [];
+    RuntimeHookAdapter::observeScopePublished(function (array $payload) use (&$published): void {
+        $published[] = $payload;
+    });
+    RuntimeHookAdapter::boot();
+    $component = new class extends NativeComponent
+    {
+        public int $count = 3;
+
+        public function render(): Column
+        {
+            return Column::make();
+        }
+    };
+
+    RuntimeObservers::componentPublished(new ComponentPublished(
+        context: new ComponentContext($component, '/counter', 9),
+        timings: new RenderTimings(2.5, 0.75, 0.25),
+    ));
+
+    expect($published)->toHaveCount(1)
+        ->and($published[0])->toMatchArray([
+            'id' => spl_object_hash($component),
+            'name' => class_basename($component::class),
+            'class' => $component::class,
+            'uri' => '/counter',
+            'renderCount' => 9,
+            'state' => ['count' => 3],
+            'timings' => [
+                'renderMs' => 2.5,
+                'serializeMs' => 0.75,
+                'publishMs' => 0.25,
+            ],
         ]);
 });
 

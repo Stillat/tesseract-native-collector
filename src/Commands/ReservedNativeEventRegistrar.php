@@ -6,6 +6,7 @@ namespace Tesseract\NativeCollector\Commands;
 
 use Native\Mobile\Edge\NativeComponent;
 use Native\Mobile\Edge\NativeEventHandlers;
+use Native\Mobile\Edge\NativeEventHandling;
 use ReflectionClass;
 use ReflectionException;
 use ReflectionMethod;
@@ -41,22 +42,24 @@ final class ReservedNativeEventRegistrar
     }
 
     /** @param array<string, mixed> $payload */
-    private function navigate(array $payload, NativeComponent $component): void
+    private function navigate(array $payload, NativeComponent $component): NativeEventHandling
     {
         $uri = $payload['uri'] ?? null;
 
         if (is_string($uri) && $uri !== '') {
             $component->navigate($uri);
         }
+
+        return NativeEventHandling::Handled;
     }
 
     /** @param array<string, mixed> $payload */
-    private function setScope(array $payload, NativeComponent $component): void
+    private function setScope(array $payload, NativeComponent $component): NativeEventHandling
     {
         $property = $payload['property'] ?? null;
 
         if (! is_string($property) || $property === '') {
-            return;
+            return NativeEventHandling::Handled;
         }
 
         $propertyReflection = $this->publicComponentProperty($component, $property);
@@ -67,7 +70,7 @@ final class ReservedNativeEventRegistrar
                 new RuntimeException('Cannot mirror set-scope for non-public property [$'.$property.'] on '.$component::class.'.')
             );
 
-            return;
+            return NativeEventHandling::Handled;
         }
 
         $value = $this->coercePropertyValue(
@@ -82,6 +85,8 @@ final class ReservedNativeEventRegistrar
         } catch (Throwable $exception) {
             $this->renderError($component, $exception);
         }
+
+        return NativeEventHandling::Handled;
     }
 
     private function coercePropertyValue(mixed $value, mixed $current): mixed
@@ -95,12 +100,12 @@ final class ReservedNativeEventRegistrar
     }
 
     /** @param array<string, mixed> $payload */
-    private function call(array $payload, NativeComponent $component): void
+    private function call(array $payload, NativeComponent $component): NativeEventHandling
     {
         $method = $payload['method'] ?? null;
 
         if (! is_string($method) || $method === '') {
-            return;
+            return NativeEventHandling::Handled;
         }
 
         $methodReflection = $this->publicComponentMethod($component, $method);
@@ -111,7 +116,7 @@ final class ReservedNativeEventRegistrar
                 new RuntimeException('Cannot mirror call ['.$method.'] on '.$component::class.' because it is not a public instance method.')
             );
 
-            return;
+            return NativeEventHandling::Handled;
         }
 
         $arguments = is_array($payload['args'] ?? null)
@@ -123,15 +128,17 @@ final class ReservedNativeEventRegistrar
         } catch (Throwable $exception) {
             $this->renderError($component, $exception);
         }
+
+        return NativeEventHandling::Handled;
     }
 
     /** @param array<string, mixed> $payload */
-    private function setStyle(array $payload, NativeComponent $component): void
+    private function setStyle(array $payload, NativeComponent $component): NativeEventHandling
     {
         if (($payload['reset'] ?? false) === true) {
             ElementInstrumentation::resetStyleOverrides();
 
-            return;
+            return NativeEventHandling::Handled;
         }
 
         $nodeId = $this->nodeId($payload['nodeId'] ?? null);
@@ -139,7 +146,7 @@ final class ReservedNativeEventRegistrar
         $key = is_string($payload['key'] ?? null) ? $payload['key'] : '';
 
         if ($nodeId === null || $key === '') {
-            return;
+            return NativeEventHandling::Handled;
         }
 
         $screen = $component::class;
@@ -148,10 +155,12 @@ final class ReservedNativeEventRegistrar
         if (is_string($classes)) {
             ElementInstrumentation::setStyleOverrideForKey($screen, $key, $classes);
 
-            return;
+            return NativeEventHandling::Handled;
         }
 
         ElementInstrumentation::removeStyleOverrideForKey($screen, $key);
+
+        return NativeEventHandling::Handled;
     }
 
     private function nodeId(mixed $value): ?int

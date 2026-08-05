@@ -106,11 +106,13 @@ class TesseractNativeCollectorServiceProvider extends ServiceProvider
         $this->registerTestHarness();
         $this->disableOutsideDebugMode();
 
+        if ($this->app->hasDebugModeEnabled()) {
+            $this->registerMcpServer();
+        }
+
         if (! (bool) config('tesseract-native.enabled', true)) {
             return;
         }
-
-        $this->registerMcpServer();
 
         ElementInstrumentation::register();
 
