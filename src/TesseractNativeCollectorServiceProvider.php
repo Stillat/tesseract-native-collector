@@ -299,17 +299,31 @@ class TesseractNativeCollectorServiceProvider extends ServiceProvider
             return;
         }
 
-        // Force a fresh chain on launch: a stale heartbeat from an unclean prior
-        // exit would otherwise leave the pump dormant (so SQL/storage don't load)
-        // until the app is relaunched once more. restartChain clears it exactly
-        // once per runtime, then a render-path tick drains anything buffered.
-        PumpTesseractCommands::restartChain();
+        // A perpetual job cannot run on Laravel's synchronous queue: dispatching
+        // it executes inline, and its self-dispatch prevents the current Artisan
+        // command or native runtime boot from ever returning. Keep the render-path
+        // tick available, but only start the background chain on a real queue.
+        if ($this->supportsBackgroundCommandPump()) {
+            // Force a fresh chain on launch: a stale heartbeat from an unclean prior
+            // exit would otherwise leave the pump dormant (so SQL/storage don't load)
+            // until the app is relaunched once more. restartChain clears it exactly
+            // once per runtime, then a render-path tick drains anything buffered.
+            PumpTesseractCommands::restartChain();
+        }
 
         try {
             $this->app->make(CommandPump::class)->tick();
         } catch (Throwable) {
             //
         }
+    }
+
+    protected function supportsBackgroundCommandPump(): bool
+    {
+        $connection = (string) config('queue.default', 'sync');
+        $driver = (string) config("queue.connections.{$connection}.driver", $connection);
+
+        return $driver !== 'sync';
     }
 
     /**

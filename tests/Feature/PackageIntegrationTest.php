@@ -62,6 +62,40 @@ it('allows the package switch to remain enabled in Laravel debug mode', function
     expect(config('tesseract-native.enabled'))->toBeTrue();
 });
 
+it('does not start the perpetual command pump on a synchronous queue', function (): void {
+    config([
+        'queue.default' => 'sync',
+        'queue.connections.sync.driver' => 'sync',
+    ]);
+
+    $provider = new class(app()) extends TesseractNativeCollectorServiceProvider
+    {
+        public function canStartBackgroundCommandPump(): bool
+        {
+            return $this->supportsBackgroundCommandPump();
+        }
+    };
+
+    expect($provider->canStartBackgroundCommandPump())->toBeFalse();
+});
+
+it('allows the perpetual command pump on a durable queue', function (): void {
+    config([
+        'queue.default' => 'database',
+        'queue.connections.database.driver' => 'database',
+    ]);
+
+    $provider = new class(app()) extends TesseractNativeCollectorServiceProvider
+    {
+        public function canStartBackgroundCommandPump(): bool
+        {
+            return $this->supportsBackgroundCommandPump();
+        }
+    };
+
+    expect($provider->canStartBackgroundCommandPump())->toBeTrue();
+});
+
 it('installs the reporting harness when a desktop test report is requested', function (): void {
     $reportPath = tempnam(sys_get_temp_dir(), 'tesseract-report-');
 
