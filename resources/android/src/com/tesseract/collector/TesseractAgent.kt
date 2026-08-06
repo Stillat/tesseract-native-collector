@@ -14,7 +14,9 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
@@ -55,11 +57,19 @@ object TesseractAgent {
     // exhausted it is dropped so a dead desktop can't wedge the worker.
     private const val SEND_RETRY_LIMIT = 3
     private const val SEND_RETRY_DELAY_MS = 500L
+    private const val RUNTIME_COMMAND_TIMEOUT_MS = 30_000L
+    private val RUNTIME_COMMAND_KINDS = setOf(
+        "native.navigate",
+        "native.set-scope",
+        "native.set-style",
+        "native.call",
+    )
 
     private val outbound = LinkedBlockingQueue<JSONObject>(OUTBOUND_CAPACITY)
     private val commandBuffer = LinkedBlockingQueue<JSONObject>(COMMAND_BUFFER_CAPACITY)
     private val seq = AtomicInteger(0)
     private val pendingTreeEnvelope = AtomicReference<JSONObject?>(null)
+    private val pendingRuntimeCommand = AtomicReference<PendingRuntimeCommand?>(null)
     private val isoFormatter = object : ThreadLocal<SimpleDateFormat>() {
         override fun initialValue(): SimpleDateFormat {
             return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
@@ -71,6 +81,11 @@ object TesseractAgent {
     @Volatile private var sessionId: String? = null
     @Volatile private var token: String? = null
     @Volatile private var captureId: String = UUID.randomUUID().toString()
+
+    private data class PendingRuntimeCommand(
+        val commandId: String,
+        val completed: CountDownLatch = CountDownLatch(1),
+    )
 
     fun prime(context: Context) {
         appContext = context
@@ -154,8 +169,34 @@ object TesseractAgent {
 
     fun respond(commandId: String, kind: String?, status: String, detail: JSONObject?): Boolean {
         val ok = transport?.respondCommand(sessionId, token, captureId, commandId, kind, status, detail) ?: false
+        completeRuntimeCommand(commandId)
         Log.i("Tesseract", "respond id=$commandId kind=$kind status=$status ok=$ok")
         return ok
+    }
+
+    private fun beginRuntimeCommand(commandId: String): PendingRuntimeCommand? {
+        val pending = PendingRuntimeCommand(commandId)
+
+        return if (pendingRuntimeCommand.compareAndSet(null, pending)) pending else null
+    }
+
+    private fun completeRuntimeCommand(commandId: String) {
+        val pending = pendingRuntimeCommand.get() ?: return
+        if (pending.commandId != commandId) return
+
+        if (pendingRuntimeCommand.compareAndSet(pending, null)) {
+            pending.completed.countDown()
+        }
+    }
+
+    private fun awaitRuntimeCommand(pending: PendingRuntimeCommand): Boolean {
+        val completed = pending.completed.await(RUNTIME_COMMAND_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+
+        if (!completed && pendingRuntimeCommand.compareAndSet(pending, null)) {
+            pending.completed.countDown()
+        }
+
+        return completed
     }
 
     fun ingest(envelopes: JSONArray): Boolean {
@@ -400,16 +441,42 @@ object TesseractAgent {
                                     // (they drive native render bridges), not by PHP.
                                     val commandId = command.optString("commandId")
                                     val payload = command.optJSONObject("payload") ?: JSONObject()
+                                    val isRuntimeCommand = commandKind in RUNTIME_COMMAND_KINDS
+                                    val pendingRuntime = if (isRuntimeCommand) beginRuntimeCommand(commandId) else null
+                                    if (isRuntimeCommand && pendingRuntime == null) {
+                                        respond(
+                                            commandId,
+                                            commandKind,
+                                            "error",
+                                            JSONObject().put("message", "another native runtime command is still pending"),
+                                        )
+                                        return@let
+                                    }
                                     val outcome = when (commandKind) {
                                         "native.highlight" -> NativeCommandBridge.highlight(payload)
                                         "native.clear-highlight" -> NativeCommandBridge.clearHighlight()
                                         "native.scroll-into-view" -> NativeCommandBridge.scrollIntoView(payload)
-                                        "native.navigate" -> NativeCommandBridge.navigate(payload)
+                                        "native.navigate" -> NativeCommandBridge.navigate(payload, commandId)
                                         "native.rotate" -> NativeCommandBridge.rotate(payload)
-                                        "native.set-scope" -> NativeCommandBridge.setScope(payload)
-                                        "native.set-style" -> NativeCommandBridge.setStyle(payload)
-                                        "native.call" -> NativeCommandBridge.call(payload)
+                                        "native.set-scope" -> NativeCommandBridge.setScope(payload, commandId)
+                                        "native.set-style" -> NativeCommandBridge.setStyle(payload, commandId)
+                                        "native.call" -> NativeCommandBridge.call(payload, commandId)
                                         else -> NativeCommandBridge.dispatch(payload)
+                                    }
+                                    if (outcome.optBoolean("deferred") && pendingRuntime != null) {
+                                        if (!awaitRuntimeCommand(pendingRuntime)) {
+                                            respond(
+                                                commandId,
+                                                commandKind,
+                                                "error",
+                                                JSONObject().put("message", "native runtime command timed out"),
+                                            )
+                                        }
+                                        Log.i("Tesseract", "native runtime command $commandKind completed")
+                                        return@let
+                                    }
+                                    if (pendingRuntime != null) {
+                                        completeRuntimeCommand(commandId)
                                     }
                                     respond(
                                         commandId,

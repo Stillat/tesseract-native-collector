@@ -109,13 +109,19 @@ object NativeCommandBridge {
         }
     }
 
-    fun navigate(payload: JSONObject): JSONObject {
+    fun navigate(payload: JSONObject, commandId: String): JSONObject {
         val uri = payload.optString("uri")
         if (uri.isEmpty()) return result(false, "no uri")
-        return sendNativeEvent("tesseract:navigate", JSONObject().put("uri", uri), "navigate $uri")
+        return sendRuntimeCommand(
+            "tesseract:navigate",
+            "native.navigate",
+            commandId,
+            JSONObject().put("uri", uri),
+            "navigate $uri",
+        )
     }
 
-    fun setStyle(payload: JSONObject): JSONObject {
+    fun setStyle(payload: JSONObject, commandId: String): JSONObject {
         val inner = JSONObject()
         if (payload.optBoolean("reset", false)) {
             inner.put("reset", true)
@@ -128,24 +134,49 @@ object NativeCommandBridge {
             inner.put("key", key)
             if (payload.has("classes") && !payload.isNull("classes")) inner.put("classes", payload.optString("classes"))
         }
-        return sendNativeEvent("tesseract:set-style", inner, "set style")
+        return sendRuntimeCommand("tesseract:set-style", "native.set-style", commandId, inner, "set style")
     }
 
-    fun setScope(payload: JSONObject): JSONObject {
+    fun setScope(payload: JSONObject, commandId: String): JSONObject {
         val property = payload.optString("property")
         if (property.isEmpty()) return result(false, "no property")
         val inner = JSONObject().put("property", property)
         if (payload.has("value")) inner.put("value", payload.get("value"))
-        return sendNativeEvent("tesseract:set-scope", inner, "set scope $property")
+        return sendRuntimeCommand(
+            "tesseract:set-scope",
+            "native.set-scope",
+            commandId,
+            inner,
+            "set scope $property",
+        )
     }
 
-    fun call(payload: JSONObject): JSONObject {
+    fun call(payload: JSONObject, commandId: String): JSONObject {
         val method = payload.optString("method")
         if (method.isEmpty()) return result(false, "no method")
         val inner = JSONObject()
             .put("method", method)
             .put("args", payload.optJSONArray("args") ?: JSONArray())
-        return sendNativeEvent("tesseract:call", inner, "call $method")
+        return sendRuntimeCommand("tesseract:call", "native.call", commandId, inner, "call $method")
+    }
+
+    private fun sendRuntimeCommand(
+        name: String,
+        kind: String,
+        commandId: String,
+        payload: JSONObject,
+        message: String,
+    ): JSONObject {
+        payload.put("_tesseractCommandId", commandId)
+        payload.put("_tesseractCommandKind", kind)
+
+        val outcome = sendNativeEvent(name, payload, message)
+
+        if (outcome.optBoolean("ok")) {
+            outcome.put("deferred", true)
+        }
+
+        return outcome
     }
 
     private fun sendNativeEvent(name: String, payload: JSONObject, message: String): JSONObject =

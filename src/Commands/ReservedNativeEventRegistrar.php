@@ -13,12 +13,15 @@ use ReflectionMethod;
 use ReflectionProperty;
 use RuntimeException;
 use Tesseract\NativeCollector\Instrumentation\ElementInstrumentation;
+use Tesseract\NativeCollector\NativeAgent;
 use Throwable;
 
 final class ReservedNativeEventRegistrar
 {
     /** @var list<int> */
     private static array $handlerIds = [];
+
+    public function __construct(private readonly NativeAgent $agent) {}
 
     public function register(): void
     {
@@ -50,6 +53,8 @@ final class ReservedNativeEventRegistrar
             $component->navigate($uri);
         }
 
+        $this->completeCommand($payload, 'native.navigate', 'ok', ['uri' => $uri]);
+
         return NativeEventHandling::Handled;
     }
 
@@ -59,12 +64,15 @@ final class ReservedNativeEventRegistrar
         $property = $payload['property'] ?? null;
 
         if (! is_string($property) || $property === '') {
+            $this->completeCommand($payload, 'native.set-scope', 'error', ['message' => 'No property was provided.']);
+
             return NativeEventHandling::Handled;
         }
 
         $propertyReflection = $this->publicComponentProperty($component, $property);
 
         if (! $propertyReflection instanceof ReflectionProperty) {
+            $this->completeCommand($payload, 'native.set-scope', 'error', ['message' => 'The property is not public.']);
             $this->renderError(
                 $component,
                 new RuntimeException('Cannot mirror set-scope for non-public property [$'.$property.'] on '.$component::class.'.')
@@ -82,7 +90,9 @@ final class ReservedNativeEventRegistrar
 
         try {
             $component->__syncProperty($property, $value);
+            $this->completeCommand($payload, 'native.set-scope', 'ok', ['property' => $property]);
         } catch (Throwable $exception) {
+            $this->completeCommand($payload, 'native.set-scope', 'error', ['message' => $exception->getMessage()]);
             $this->renderError($component, $exception);
         }
 
@@ -105,12 +115,15 @@ final class ReservedNativeEventRegistrar
         $method = $payload['method'] ?? null;
 
         if (! is_string($method) || $method === '') {
+            $this->completeCommand($payload, 'native.call', 'error', ['message' => 'No method was provided.']);
+
             return NativeEventHandling::Handled;
         }
 
         $methodReflection = $this->publicComponentMethod($component, $method);
 
         if (! $methodReflection instanceof ReflectionMethod) {
+            $this->completeCommand($payload, 'native.call', 'error', ['message' => 'The method is not a public instance method.']);
             $this->renderError(
                 $component,
                 new RuntimeException('Cannot mirror call ['.$method.'] on '.$component::class.' because it is not a public instance method.')
@@ -125,7 +138,9 @@ final class ReservedNativeEventRegistrar
 
         try {
             $methodReflection->invokeArgs($component, $arguments);
+            $this->completeCommand($payload, 'native.call', 'ok', ['method' => $method]);
         } catch (Throwable $exception) {
+            $this->completeCommand($payload, 'native.call', 'error', ['message' => $exception->getMessage()]);
             $this->renderError($component, $exception);
         }
 
@@ -137,6 +152,7 @@ final class ReservedNativeEventRegistrar
     {
         if (($payload['reset'] ?? false) === true) {
             ElementInstrumentation::resetStyleOverrides();
+            $this->completeCommand($payload, 'native.set-style', 'ok', ['reset' => true]);
 
             return NativeEventHandling::Handled;
         }
@@ -146,6 +162,8 @@ final class ReservedNativeEventRegistrar
         $key = is_string($payload['key'] ?? null) ? $payload['key'] : '';
 
         if ($nodeId === null || $key === '') {
+            $this->completeCommand($payload, 'native.set-style', 'error', ['message' => 'The style target is invalid.']);
+
             return NativeEventHandling::Handled;
         }
 
@@ -154,11 +172,13 @@ final class ReservedNativeEventRegistrar
 
         if (is_string($classes)) {
             ElementInstrumentation::setStyleOverrideForKey($screen, $key, $classes);
+            $this->completeCommand($payload, 'native.set-style', 'ok', ['key' => $key]);
 
             return NativeEventHandling::Handled;
         }
 
         ElementInstrumentation::removeStyleOverrideForKey($screen, $key);
+        $this->completeCommand($payload, 'native.set-style', 'ok', ['key' => $key]);
 
         return NativeEventHandling::Handled;
     }
@@ -226,5 +246,20 @@ final class ReservedNativeEventRegistrar
         }
 
         throw $exception;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $detail
+     */
+    private function completeCommand(array $payload, string $kind, string $status, array $detail): void
+    {
+        $commandId = $payload['_tesseractCommandId'] ?? null;
+
+        if (! is_string($commandId) || $commandId === '') {
+            return;
+        }
+
+        $this->agent->respond($commandId, $kind, $status, $detail);
     }
 }

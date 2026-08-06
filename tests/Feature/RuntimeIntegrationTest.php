@@ -17,6 +17,7 @@ use Native\Mobile\Edge\Runtime\RenderTimings;
 use Native\Mobile\Edge\RuntimeObservers;
 use Tesseract\NativeCollector\Commands\ReservedNativeEventRegistrar;
 use Tesseract\NativeCollector\Instrumentation\ElementInstrumentation;
+use Tesseract\NativeCollector\NativeAgent;
 use Tesseract\NativeCollector\Telemetry\RuntimeHookAdapter;
 
 afterEach(function (): void {
@@ -41,7 +42,7 @@ it('handles namespaced style commands through the generic event registry', funct
     $key = sha1('resources/views/native/home.blade.php:12');
 
     ElementInstrumentation::register();
-    (new ReservedNativeEventRegistrar)->register();
+    (new ReservedNativeEventRegistrar(new NativeAgent))->register();
     $handled = NativeEventHandlers::dispatch('tesseract:set-style', [
         'nodeId' => 42,
         'key' => $key,

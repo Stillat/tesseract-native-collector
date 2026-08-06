@@ -86,7 +86,9 @@ class TesseractNativeCollectorServiceProvider extends ServiceProvider
             $app->make(NativeAgent::class),
             $app->make(CommandExecutor::class),
         ));
-        $this->app->singleton(ReservedNativeEventRegistrar::class, static fn (): ReservedNativeEventRegistrar => new ReservedNativeEventRegistrar);
+        $this->app->singleton(ReservedNativeEventRegistrar::class, static fn ($app): ReservedNativeEventRegistrar => new ReservedNativeEventRegistrar(
+            $app->make(NativeAgent::class),
+        ));
 
         if ($this->app->runningInConsole()) {
             $this->commands([

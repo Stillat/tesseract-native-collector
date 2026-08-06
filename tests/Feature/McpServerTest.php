@@ -20,6 +20,7 @@ use Tesseract\NativeCollector\Mcp\Tools\TesseractScreenshotTool;
 use Tesseract\NativeCollector\Mcp\Tools\TesseractScreensTool;
 use Tesseract\NativeCollector\Mcp\Tools\TesseractSearchTool;
 use Tesseract\NativeCollector\Mcp\Tools\TesseractViewTreeTool;
+use Tesseract\NativeCollector\NativeAgent;
 use Tesseract\NativeCollector\TesseractNativeCollectorServiceProvider;
 
 function bootNativeProvider(): TesseractNativeCollectorServiceProvider
@@ -249,7 +250,7 @@ it('uses the shared tesseractctl config for native desktop control tokens', func
 
 it('mirrors reserved native set-scope through public properties only', function (): void {
     NativeEventHandlers::reset();
-    (new ReservedNativeEventRegistrar)->register();
+    (new ReservedNativeEventRegistrar(new NativeAgent))->register();
 
     $component = new class extends NativeComponent
     {
@@ -284,7 +285,7 @@ it('mirrors reserved native set-scope through public properties only', function 
 
 it('mirrors reserved native calls through public instance methods only', function (): void {
     NativeEventHandlers::reset();
-    (new ReservedNativeEventRegistrar)->register();
+    (new ReservedNativeEventRegistrar(new NativeAgent))->register();
 
     $component = new class extends NativeComponent
     {
@@ -334,6 +335,71 @@ it('mirrors reserved native calls through public instance methods only', functio
         ->and($component->errors[1])->toContain('not a public instance method')
         ->and($component->errors[2])->toContain('not a public instance method')
         ->and($component->errors[3])->toBe('component boom');
+});
+
+it('acknowledges reserved runtime commands after their component method finishes', function (): void {
+    NativeEventHandlers::reset();
+    $agent = new class extends NativeAgent
+    {
+        /** @var list<array{commandId: string, kind: string|null, status: string, detail: array<string, mixed>|null}> */
+        public array $responses = [];
+
+        public function respond(string $commandId, ?string $kind, string $status, ?array $detail): void
+        {
+            $this->responses[] = compact('commandId', 'kind', 'status', 'detail');
+        }
+    };
+    (new ReservedNativeEventRegistrar($agent))->register();
+
+    $component = new class extends NativeComponent
+    {
+        public int $count = 0;
+
+        public array $errors = [];
+
+        public function increment(): void
+        {
+            $this->count++;
+        }
+
+        public function explodeForTest(): void
+        {
+            throw new RuntimeException('component boom');
+        }
+
+        public function renderErrorScreen(Throwable $e): void
+        {
+            $this->errors[] = $e->getMessage();
+        }
+    };
+
+    NativeEventHandlers::dispatch('tesseract:call', [
+        'method' => 'increment',
+        'args' => [],
+        '_tesseractCommandId' => 'command-ok',
+    ], $component);
+    NativeEventHandlers::dispatch('tesseract:call', [
+        'method' => 'explodeForTest',
+        'args' => [],
+        '_tesseractCommandId' => 'command-error',
+    ], $component);
+
+    expect($component->count)->toBe(1)
+        ->and($agent->responses)->toBe([
+            [
+                'commandId' => 'command-ok',
+                'kind' => 'native.call',
+                'status' => 'ok',
+                'detail' => ['method' => 'increment'],
+            ],
+            [
+                'commandId' => 'command-error',
+                'kind' => 'native.call',
+                'status' => 'error',
+                'detail' => ['message' => 'component boom'],
+            ],
+        ])
+        ->and($component->errors)->toBe(['component boom']);
 });
 
 it('answers a native debug tool call from faked desktop history and attaches project identity', function (): void {
