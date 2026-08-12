@@ -30,6 +30,7 @@ final class ReservedNativeEventRegistrar
         self::$handlerIds = [
             NativeEventHandlers::register('tesseract:navigate', $this->navigate(...)),
             NativeEventHandlers::register('tesseract:set-scope', $this->setScope(...)),
+            NativeEventHandlers::register('tesseract:set-scope-batch', $this->setScopeBatch(...)),
             NativeEventHandlers::register('tesseract:call', $this->call(...)),
             NativeEventHandlers::register('tesseract:set-style', $this->setStyle(...)),
         ];
@@ -93,6 +94,85 @@ final class ReservedNativeEventRegistrar
             $this->completeCommand($payload, 'native.set-scope', 'ok', ['property' => $property]);
         } catch (Throwable $exception) {
             $this->completeCommand($payload, 'native.set-scope', 'error', ['message' => $exception->getMessage()]);
+            $this->renderError($component, $exception);
+        }
+
+        return NativeEventHandling::Handled;
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function setScopeBatch(array $payload, NativeComponent $component): NativeEventHandling
+    {
+        $changes = $payload['changes'] ?? null;
+
+        if (! is_array($changes) || $changes === []) {
+            $this->completeCommand($payload, 'native.set-scope-batch', 'error', ['message' => 'No scope changes were provided.']);
+
+            return NativeEventHandling::Handled;
+        }
+
+        $assignments = [];
+
+        foreach (array_values($changes) as $index => $change) {
+            $property = is_array($change) ? ($change['property'] ?? null) : null;
+
+            if (! is_string($property) || $property === '') {
+                $this->completeCommand($payload, 'native.set-scope-batch', 'error', [
+                    'message' => 'A scope change is missing its property.',
+                    'index' => $index,
+                ]);
+
+                return NativeEventHandling::Handled;
+            }
+
+            $propertyReflection = $this->publicComponentProperty($component, $property);
+
+            if (! $propertyReflection instanceof ReflectionProperty) {
+                $exception = new RuntimeException('Cannot mirror set-scope for non-public property [$'.$property.'] on '.$component::class.'.');
+                $this->completeCommand($payload, 'native.set-scope-batch', 'error', [
+                    'message' => 'The property is not public.',
+                    'index' => $index,
+                    'property' => $property,
+                ]);
+                $this->renderError($component, $exception);
+
+                return NativeEventHandling::Handled;
+            }
+
+            $value = array_key_exists('value', $change) ? $change['value'] : null;
+
+            if ($value !== null && ! is_scalar($value)) {
+                $this->completeCommand($payload, 'native.set-scope-batch', 'error', [
+                    'message' => 'Scope changes only support scalar or null values.',
+                    'index' => $index,
+                    'property' => $property,
+                ]);
+
+                return NativeEventHandling::Handled;
+            }
+
+            $assignments[] = [
+                'property' => $property,
+                'value' => $this->coercePropertyValue(
+                    $value,
+                    $propertyReflection->isInitialized($component)
+                        ? $propertyReflection->getValue($component)
+                        : null,
+                ),
+            ];
+        }
+
+        try {
+            foreach ($assignments as $assignment) {
+                $component->__syncProperty($assignment['property'], $assignment['value']);
+            }
+
+            $this->completeCommand($payload, 'native.set-scope-batch', 'ok', [
+                'count' => count($assignments),
+                'properties' => array_column($assignments, 'property'),
+            ]);
+        } catch (Throwable $exception) {
+            $this->completeCommand($payload, 'native.set-scope-batch', 'error', ['message' => $exception->getMessage()]);
             $this->renderError($component, $exception);
         }
 

@@ -39,7 +39,7 @@ class CapabilitiesResource extends Resource
                 'resource' => 'tesseract-native://desktop-status',
                 'tool' => 'tesseract-native-action',
                 'pairing' => 'Use `tesseractctl pair`; this server resolves TESSERACT_AGENT_TOKEN/TESSERACT_AGENT_BASE_URL first, then the shared tesseractctl config, then the desktop descriptor.',
-                'nativeActions' => ['native.navigate', 'native.dispatch-event', 'native.set-scope', 'native.call', 'native.set-style', 'mirror.input', 'mirror.probe', 'mirror.screenshot', 'screen.items.find', 'screen.item.instrument'],
+                'nativeActions' => ['native.navigate', 'native.dispatch-event', 'native.set-scope', 'native.set-scope-batch', 'native.call', 'native.set-style', 'mirror.input', 'mirror.probe', 'mirror.screenshot', 'screen.items.find', 'screen.item.instrument'],
                 'screenTools' => ['tesseract-screenshot', 'tesseract-screen-find', 'tesseract-screen-instrument'],
                 'unavailableResponse' => '{ available: false, reason, hint }',
             ],

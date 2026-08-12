@@ -26,12 +26,14 @@ object NativeCaptureBridge {
         if (treeSubscription != null) return
 
         emitter = emit
-        treeSubscription = NativeTreeObserverRegistry.observe(::enqueueLatestTree)
+        treeSubscription = NativeTreeObserverRegistry.register { publication ->
+            enqueueLatestTree(publication.tree)
+        }
     }
 
     @Synchronized
     fun detach() {
-        treeSubscription?.let(NativeTreeObserverRegistry::unsubscribe)
+        treeSubscription?.let(NativeTreeObserverRegistry::unregister)
         treeSubscription = null
         synchronized(pendingLock) {
             emitter = null

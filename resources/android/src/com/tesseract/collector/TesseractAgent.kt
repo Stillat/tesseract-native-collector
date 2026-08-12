@@ -61,6 +61,7 @@ object TesseractAgent {
     private val RUNTIME_COMMAND_KINDS = setOf(
         "native.navigate",
         "native.set-scope",
+        "native.set-scope-batch",
         "native.set-style",
         "native.call",
     )
@@ -459,6 +460,7 @@ object TesseractAgent {
                                         "native.navigate" -> NativeCommandBridge.navigate(payload, commandId)
                                         "native.rotate" -> NativeCommandBridge.rotate(payload)
                                         "native.set-scope" -> NativeCommandBridge.setScope(payload, commandId)
+                                        "native.set-scope-batch" -> NativeCommandBridge.setScopeBatch(payload, commandId)
                                         "native.set-style" -> NativeCommandBridge.setStyle(payload, commandId)
                                         "native.call" -> NativeCommandBridge.call(payload, commandId)
                                         else -> NativeCommandBridge.dispatch(payload)

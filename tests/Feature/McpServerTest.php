@@ -283,6 +283,60 @@ it('mirrors reserved native set-scope through public properties only', function 
         ->and($component->errors[0])->toContain('non-public property [$secret]');
 });
 
+it('mirrors a native scope batch after validating every property', function (): void {
+    NativeEventHandlers::reset();
+    (new ReservedNativeEventRegistrar(new NativeAgent))->register();
+
+    $component = new class extends NativeComponent
+    {
+        public int $count = 1;
+
+        public bool $enabled = true;
+
+        public array $synchronized = [];
+
+        public array $errors = [];
+
+        protected string $secret = 'hidden';
+
+        public function __syncProperty(string $property, mixed $value): void
+        {
+            $this->synchronized[] = $property;
+            $this->{$property} = $value;
+        }
+
+        public function renderErrorScreen(Throwable $e): void
+        {
+            $this->errors[] = $e->getMessage();
+        }
+    };
+
+    NativeEventHandlers::dispatch('tesseract:set-scope-batch', [
+        'changes' => [
+            ['property' => 'count', 'value' => '7'],
+            ['property' => 'enabled', 'value' => 'false'],
+        ],
+    ], $component);
+
+    expect($component->count)->toBe(7)
+        ->and($component->enabled)->toBeFalse()
+        ->and($component->synchronized)->toBe(['count', 'enabled']);
+
+    $component->synchronized = [];
+
+    NativeEventHandlers::dispatch('tesseract:set-scope-batch', [
+        'changes' => [
+            ['property' => 'count', 'value' => 9],
+            ['property' => 'secret', 'value' => 'changed'],
+        ],
+    ], $component);
+
+    expect($component->count)->toBe(7)
+        ->and($component->synchronized)->toBe([])
+        ->and($component->errors)->toHaveCount(1)
+        ->and($component->errors[0])->toContain('non-public property [$secret]');
+});
+
 it('mirrors reserved native calls through public instance methods only', function (): void {
     NativeEventHandlers::reset();
     (new ReservedNativeEventRegistrar(new NativeAgent))->register();
