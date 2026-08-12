@@ -151,6 +151,18 @@ object NativeCommandBridge {
         )
     }
 
+    fun setScopeBatch(payload: JSONObject, commandId: String): JSONObject {
+        val changes = payload.optJSONArray("changes") ?: return result(false, "no scope changes")
+        if (changes.length() == 0) return result(false, "no scope changes")
+        return sendRuntimeCommand(
+            "tesseract:set-scope-batch",
+            "native.set-scope-batch",
+            commandId,
+            JSONObject().put("changes", changes),
+            "set ${changes.length()} scope properties",
+        )
+    }
+
     fun call(payload: JSONObject, commandId: String): JSONObject {
         val method = payload.optString("method")
         if (method.isEmpty()) return result(false, "no method")

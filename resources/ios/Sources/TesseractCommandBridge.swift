@@ -30,6 +30,15 @@ enum TesseractCommandBridge {
             if let value = payload["value"], !(value is NSNull) { inner["value"] = value }
             return sendNativeEvent(name: "tesseract:set-scope", payload: inner, message: "set scope \(property)")
 
+        case "native.set-scope-batch":
+            let changes = (payload["changes"] as? [[String: Any]]) ?? []
+            guard !changes.isEmpty else { return result(false, "no scope changes") }
+            return sendNativeEvent(
+                name: "tesseract:set-scope-batch",
+                payload: ["changes": changes],
+                message: "set \(changes.count) scope properties"
+            )
+
         case "native.call":
             let method = (payload["method"] as? String) ?? ""
             guard !method.isEmpty else { return result(false, "no method") }

@@ -96,6 +96,7 @@ return [
     'capabilities' => [
         'laravel-core',
         'native-runtime',
+        'native-scope-batch',
         'server-log',
         'server-query',
         'server-exception',
