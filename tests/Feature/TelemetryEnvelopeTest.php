@@ -620,3 +620,27 @@ it('emits log context as a JSON string with channel and timestampMs', function (
         ->and($envelope['payload']['channel'])->toBeString()
         ->and($envelope['payload']['timestampMs'])->toBeFloat();
 });
+
+it('preserves nested log and custom event values while redacting sensitive keys', function (): void {
+    $factory = new EnvelopeFactory;
+    $context = ['gate' => ['health' => 25, 'repairable' => true, 'token' => 'private-value']];
+    $expected = ['gate' => ['health' => 25, 'repairable' => true, 'token' => '[redacted]']];
+    $log = $factory->log(new MessageLogged('warning', 'Gate damaged', $context));
+    $event = $factory->frameworkEvent('shardfall.lab.beacon', [$context]);
+
+    expect(json_decode($log['payload']['context'], true, flags: JSON_THROW_ON_ERROR))->toBe($expected)
+        ->and($log['payload']['contextTruncated'])->toBeFalse()
+        ->and(json_decode($event['payload']['payloadPreview'], true, flags: JSON_THROW_ON_ERROR))->toBe([$expected]);
+});
+
+it('bounds recursive log context without returning broken JSON', function (): void {
+    config()->set('tesseract-native.observability.native_events.max_entries', 6);
+    $context = ['message' => str_repeat('Ω', 5000)];
+    $context['recursive'] = &$context;
+    $log = (new EnvelopeFactory)->log(new MessageLogged('info', 'Bounded payload', $context));
+    $decoded = json_decode($log['payload']['context'], true, flags: JSON_THROW_ON_ERROR);
+
+    expect($log['payload']['contextTruncated'])->toBeTrue()
+        ->and(strlen($decoded['message']))->toBeLessThanOrEqual(2048)
+        ->and(strlen($log['payload']['context']))->toBeLessThan(32768);
+});

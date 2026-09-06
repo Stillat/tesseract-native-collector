@@ -36,13 +36,19 @@ class EnvelopeFactory
         ?string $parentRequestId = null,
         ?string $stage = null,
     ): array {
+        $context = array_map(static fn (mixed $value): mixed => $value instanceof Throwable
+            ? ['class' => $value::class, 'message' => $value->getMessage()]
+            : $value, $event->context);
+        $context = $this->safeNativeEventState('log', $context, $contextTruncated);
+
         return $this->envelope('server.log.recorded', 'log', [
             'requestId' => $requestId,
             'traceId' => $traceId,
             'parentRequestId' => $parentRequestId,
             'level' => $event->level,
             'message' => $event->message,
-            'context' => $this->stringify($this->safeContext($event->context)),
+            'context' => json_encode($context, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}',
+            'contextTruncated' => $contextTruncated,
             'channel' => (string) config('logging.default', 'app'),
             'timestampMs' => (float) now()->getTimestampMs(),
             'loggedAt' => now()->toISOString(),

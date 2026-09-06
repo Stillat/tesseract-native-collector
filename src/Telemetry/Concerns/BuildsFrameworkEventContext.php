@@ -641,12 +641,13 @@ trait BuildsFrameworkEventContext
             }
 
             if (is_array($value)) {
-                return ['count' => count($value)];
+                return $value;
             }
 
             return get_debug_type($value);
         }, array_slice($payload, 0, 5));
 
+        $normalized = $this->safeNativeEventState('framework', $normalized);
         $json = json_encode($normalized, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
 
         if (! is_string($json) || $json === '') {
