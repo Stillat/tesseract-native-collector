@@ -26,7 +26,7 @@ afterEach(function (): void {
     ElementInstrumentation::reset();
     NativeElementCollector::reset();
     NativeElementCollector::stopCapturingAttributes();
-    NativeElementCollector::stopTransformingAttributes();
+    NativeElementCollector::stopTransformingAttributes('tesseract.instrumentation');
     NativeEventHandlers::reset();
 });
 

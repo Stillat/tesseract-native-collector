@@ -108,7 +108,7 @@ class TinkerEvaluator
     protected function compilesAsExpression(string $expression): bool
     {
         try {
-            eval("return static function (): mixed { return {$expression}; };");
+            eval("return static function (): mixed { return ({$expression}); };");
 
             return true;
         } catch (Throwable) {
