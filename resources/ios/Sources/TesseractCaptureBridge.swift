@@ -19,8 +19,8 @@ enum TesseractCaptureBridge {
         guard treeSubscription == nil else { lock.unlock(); return }
         lock.unlock()
 
-        let trees = NativeTreeObserverRegistry.shared.observe {
-            enqueueLatestTree($0, emit: emit)
+        let trees = NativeTreeObserverRegistry.shared.register {
+            enqueueLatestTree($0.tree, emit: emit)
         }
 
         lock.lock()
@@ -35,7 +35,7 @@ enum TesseractCaptureBridge {
         pendingTree = nil
         lock.unlock()
 
-        if let trees { NativeTreeObserverRegistry.shared.unsubscribe(trees) }
+        if let trees { NativeTreeObserverRegistry.shared.unregister(trees) }
         DispatchQueue.main.async { TesseractInspectorState.shared.updateKnownNodes([]) }
     }
 
